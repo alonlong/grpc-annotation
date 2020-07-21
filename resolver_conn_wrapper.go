@@ -39,7 +39,7 @@ type ccResolverWrapper struct {
 	resolverMu sync.Mutex
 	resolver   resolver.Resolver
 	done       *grpcsync.Event
-	curState   resolver.State
+	curState   resolver.State // 当前解析器的状态(当前地址列表)
 
 	pollingMu sync.Mutex
 	polling   chan struct{}
@@ -71,10 +71,13 @@ func newCCResolverWrapper(cc *ClientConn, rb resolver.Builder) (*ccResolverWrapp
 	// accessing ccr.resolver which is being assigned here.
 	ccr.resolverMu.Lock()
 	defer ccr.resolverMu.Unlock()
+
+	// 构建目标解析器，触发接口 "UpdateState"
 	ccr.resolver, err = rb.Build(cc.parsedTarget, ccr, rbo)
 	if err != nil {
 		return nil, err
 	}
+
 	return ccr, nil
 }
 
@@ -136,6 +139,7 @@ func (ccr *ccResolverWrapper) poll(err error) {
 	}()
 }
 
+// UpdateState 状态更新事件
 func (ccr *ccResolverWrapper) UpdateState(s resolver.State) {
 	if ccr.done.HasFired() {
 		return
@@ -144,7 +148,9 @@ func (ccr *ccResolverWrapper) UpdateState(s resolver.State) {
 	if channelz.IsOn() {
 		ccr.addChannelzTraceEvent(s)
 	}
+	// 更新当前状态
 	ccr.curState = s
+
 	ccr.poll(ccr.cc.updateResolverState(ccr.curState, nil))
 }
 

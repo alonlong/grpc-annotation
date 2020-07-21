@@ -46,8 +46,8 @@ func (*pickfirstBuilder) Name() string {
 
 type pickfirstBalancer struct {
 	state connectivity.State
-	cc    balancer.ClientConn
-	sc    balancer.SubConn
+	cc    balancer.ClientConn // 客户端连接
+	sc    balancer.SubConn    // 子连接
 }
 
 func (b *pickfirstBalancer) ResolverError(err error) {
@@ -63,13 +63,17 @@ func (b *pickfirstBalancer) ResolverError(err error) {
 	}
 }
 
+// UpdateClientConnState 负载均衡器相关联的 连接状态 更新事件处理
 func (b *pickfirstBalancer) UpdateClientConnState(cs balancer.ClientConnState) error {
 	if len(cs.ResolverState.Addresses) == 0 {
 		b.ResolverError(errors.New("produced zero addresses"))
 		return balancer.ErrBadResolverState
 	}
+
+	// 初始化子连接
 	if b.sc == nil {
 		var err error
+		// 基于地址列表初始化子连接
 		b.sc, err = b.cc.NewSubConn(cs.ResolverState.Addresses, balancer.NewSubConnOptions{})
 		if err != nil {
 			if grpclog.V(2) {
@@ -81,16 +85,24 @@ func (b *pickfirstBalancer) UpdateClientConnState(cs balancer.ClientConnState) e
 			})
 			return balancer.ErrBadResolverState
 		}
+
+		// 更新连接状态
 		b.state = connectivity.Idle
 		b.cc.UpdateState(balancer.State{ConnectivityState: connectivity.Idle, Picker: &picker{result: balancer.PickResult{SubConn: b.sc}}})
+
+		// 创建连接
 		b.sc.Connect()
 	} else {
+		// 更新子连接地址列表
 		b.sc.UpdateAddresses(cs.ResolverState.Addresses)
+
+		// 创建连接
 		b.sc.Connect()
 	}
 	return nil
 }
 
+// UpdateSubConnState 子连接状态更新事件处理
 func (b *pickfirstBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer.SubConnState) {
 	if grpclog.V(2) {
 		grpclog.Infof("pickfirstBalancer: UpdateSubConnState: %p, %v", sc, s)
@@ -101,6 +113,8 @@ func (b *pickfirstBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer.S
 		}
 		return
 	}
+
+	// 子连接状态
 	b.state = s.ConnectivityState
 	if s.ConnectivityState == connectivity.Shutdown {
 		b.sc = nil
@@ -109,14 +123,12 @@ func (b *pickfirstBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer.S
 
 	switch s.ConnectivityState {
 	case connectivity.Ready, connectivity.Idle:
+		// ccBalancerWrapper->UpdateState
 		b.cc.UpdateState(balancer.State{ConnectivityState: s.ConnectivityState, Picker: &picker{result: balancer.PickResult{SubConn: sc}}})
 	case connectivity.Connecting:
 		b.cc.UpdateState(balancer.State{ConnectivityState: s.ConnectivityState, Picker: &picker{err: balancer.ErrNoSubConnAvailable}})
 	case connectivity.TransientFailure:
-		b.cc.UpdateState(balancer.State{
-			ConnectivityState: s.ConnectivityState,
-			Picker:            &picker{err: s.ConnectionError},
-		})
+		b.cc.UpdateState(balancer.State{ConnectivityState: s.ConnectivityState, Picker: &picker{err: s.ConnectionError}})
 	}
 }
 

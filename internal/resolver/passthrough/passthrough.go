@@ -31,7 +31,10 @@ func (*passthroughBuilder) Build(target resolver.Target, cc resolver.ClientConn,
 		target: target,
 		cc:     cc,
 	}
+
+	// 连接初始化过程，触发状态更新事件
 	r.start()
+
 	return r, nil
 }
 
@@ -41,10 +44,11 @@ func (*passthroughBuilder) Scheme() string {
 
 type passthroughResolver struct {
 	target resolver.Target
-	cc     resolver.ClientConn
+	cc     resolver.ClientConn // 定义更新通知接口
 }
 
 func (r *passthroughResolver) start() {
+	// 目标解析器的状态更新事件
 	r.cc.UpdateState(resolver.State{Addresses: []resolver.Address{{Addr: r.target.Endpoint}}})
 }
 

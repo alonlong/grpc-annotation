@@ -153,10 +153,10 @@ type BuildOptions struct {
 	Dialer func(context.Context, string) (net.Conn, error)
 }
 
-// State contains the current Resolver state relevant to the ClientConn.
+// State contains the current Resolver state relevant to the ClientConn. 客户端连接相关联的当前解析器状态
 type State struct {
 	// Addresses is the latest set of resolved addresses for the target.
-	Addresses []Address
+	Addresses []Address // 最新地址列表
 
 	// ServiceConfig contains the result from parsing the latest service
 	// config.  If it is nil, it indicates no service config is present or the
@@ -169,7 +169,7 @@ type State struct {
 }
 
 // ClientConn contains the callbacks for resolver to notify any updates
-// to the gRPC ClientConn.
+// to the gRPC ClientConn. 定义目标解析器的任何更新触发的通知接口
 //
 // This interface is to be implemented by gRPC. Users should not need a
 // brand new implementation of this interface. For the situations like

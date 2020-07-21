@@ -41,6 +41,7 @@ func split2(s, sep string) (string, string, bool) {
 //
 // If target is not a valid scheme://authority/endpoint, it returns {Endpoint:
 // target}.
+// 目标服务格式：scheme://authority/endpoint
 func ParseTarget(target string) (ret resolver.Target) {
 	var ok bool
 	ret.Scheme, ret.Endpoint, ok = split2(target, "://")
