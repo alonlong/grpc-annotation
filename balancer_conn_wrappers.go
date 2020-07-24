@@ -38,7 +38,7 @@ type scStateUpdate struct {
 }
 
 // ccBalancerWrapper is a wrapper on top of cc for balancers.
-// It implements balancer.ClientConn interface.
+// It implements balancer.ClientConn interface. 实现 balancer.ClientConn 接口
 type ccBalancerWrapper struct {
 	cc         *ClientConn
 	balancerMu sync.Mutex // synchronizes calls to the balancer
@@ -47,7 +47,7 @@ type ccBalancerWrapper struct {
 	done       *grpcsync.Event
 
 	mu       sync.Mutex
-	subConns map[*acBalancerWrapper]struct{} // 子连接列表
+	subConns map[*acBalancerWrapper]struct{} // 子连接对象哈希表
 }
 
 func newCCBalancerWrapper(cc *ClientConn, b balancer.Builder, bopts balancer.BuildOptions) *ccBalancerWrapper {
@@ -138,20 +138,25 @@ func (ccb *ccBalancerWrapper) resolverError(err error) {
 	ccb.balancerMu.Unlock()
 }
 
-// 创建新的子连接
+// 基于地址列表 创建新的子连接
 func (ccb *ccBalancerWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
 	if len(addrs) <= 0 {
 		return nil, fmt.Errorf("grpc: cannot create SubConn with empty address list")
 	}
+
 	ccb.mu.Lock()
 	defer ccb.mu.Unlock()
+	// 检查连接是否已经关闭
 	if ccb.subConns == nil {
 		return nil, fmt.Errorf("grpc: ClientConn balancer wrapper was closed")
 	}
+
+	// 基于地址列表 创建网络连接对象
 	ac, err := ccb.cc.newAddrConn(addrs, opts)
 	if err != nil {
 		return nil, err
 	}
+
 	acbw := &acBalancerWrapper{ac: ac}
 	acbw.ac.mu.Lock()
 	ac.acbw = acbw
@@ -201,10 +206,10 @@ func (ccb *ccBalancerWrapper) Target() string {
 }
 
 // acBalancerWrapper is a wrapper on top of ac for balancers.
-// It implements balancer.SubConn interface.
+// It implements balancer.SubConn interface. 实现 balancer.SubConn 接口
 type acBalancerWrapper struct {
 	mu sync.Mutex
-	ac *addrConn // 网络连接
+	ac *addrConn // 基于地址列表的网络连接对象
 }
 
 // 更新地址列表
@@ -253,6 +258,7 @@ func (acbw *acBalancerWrapper) UpdateAddresses(addrs []resolver.Address) {
 	}
 }
 
+// 网络连接对象 连接服务端
 func (acbw *acBalancerWrapper) Connect() {
 	acbw.mu.Lock()
 	defer acbw.mu.Unlock()

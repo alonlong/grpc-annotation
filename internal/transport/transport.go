@@ -243,7 +243,7 @@ type Stream struct {
 	method       string             // the associated RPC method of the stream
 	recvCompress string
 	sendCompress string
-	buf          *recvBuffer
+	buf          *recvBuffer // 请求数据缓存区，等待上层业务处理
 	trReader     io.Reader
 	fc           *inFlow
 	wq           *writeQuota

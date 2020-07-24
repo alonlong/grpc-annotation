@@ -154,6 +154,7 @@ func NewClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 	return cc.NewStream(ctx, desc, method, opts...)
 }
 
+// 基于客户端连接创建流
 func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, method string, opts ...CallOption) (_ ClientStream, err error) {
 	if channelz.IsOn() {
 		cc.incrCallsStarted()
@@ -165,7 +166,7 @@ func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 	}
 	c := defaultCallInfo()
 	// Provide an opportunity for the first RPC to see the first service config
-	// provided by the resolver.
+	// provided by the resolver. 阻塞直到第一次的目标解析完成
 	if err := cc.waitForResolvedAddrs(ctx); err != nil {
 		return nil, err
 	}

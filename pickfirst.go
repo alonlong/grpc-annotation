@@ -65,6 +65,7 @@ func (b *pickfirstBalancer) ResolverError(err error) {
 
 // UpdateClientConnState 负载均衡器相关联的 连接状态 更新事件处理
 func (b *pickfirstBalancer) UpdateClientConnState(cs balancer.ClientConnState) error {
+	// 地址列表为空
 	if len(cs.ResolverState.Addresses) == 0 {
 		b.ResolverError(errors.New("produced zero addresses"))
 		return balancer.ErrBadResolverState
@@ -72,8 +73,10 @@ func (b *pickfirstBalancer) UpdateClientConnState(cs balancer.ClientConnState) e
 
 	// 初始化子连接
 	if b.sc == nil {
+		grpclog.Infof("first time to NewSubConn: %+v", cs.ResolverState.Addresses)
+
 		var err error
-		// 基于地址列表初始化子连接
+		// 基于地址列表初始化子连接，忽略子连接选项 -> ccBalancerWrapper
 		b.sc, err = b.cc.NewSubConn(cs.ResolverState.Addresses, balancer.NewSubConnOptions{})
 		if err != nil {
 			if grpclog.V(2) {
@@ -86,7 +89,7 @@ func (b *pickfirstBalancer) UpdateClientConnState(cs balancer.ClientConnState) e
 			return balancer.ErrBadResolverState
 		}
 
-		// 更新连接状态
+		// 更新连接状态：空闲状态
 		b.state = connectivity.Idle
 		b.cc.UpdateState(balancer.State{ConnectivityState: connectivity.Idle, Picker: &picker{result: balancer.PickResult{SubConn: b.sc}}})
 

@@ -650,10 +650,11 @@ func (w *bufWriter) Flush() error {
 }
 
 type framer struct {
-	writer *bufWriter
-	fr     *http2.Framer
+	writer *bufWriter    // 基于缓存的写对象
+	fr     *http2.Framer // 帧读写
 }
 
+// 初始化协议栈处理对象
 func newFramer(conn net.Conn, writeBufferSize, readBufferSize int, maxHeaderListSize uint32) *framer {
 	if writeBufferSize < 0 {
 		writeBufferSize = 0

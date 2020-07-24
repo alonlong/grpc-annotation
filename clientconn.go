@@ -498,16 +498,16 @@ type ClientConn struct {
 	blockingpicker    *pickerWrapper
 
 	mu              sync.RWMutex
-	resolverWrapper *ccResolverWrapper
+	resolverWrapper *ccResolverWrapper // 解析器封装对象
 	sc              *ServiceConfig
-	conns           map[*addrConn]struct{}
+	conns           map[*addrConn]struct{} // 基于地址列表的网络连接列表
 	// Keepalive parameter can be updated if a GoAway is received.
 	mkp             keepalive.ClientParameters
-	curBalancerName string // 当前的负载均衡器
-	balancerWrapper *ccBalancerWrapper
+	curBalancerName string             // 当前的负载均衡器
+	balancerWrapper *ccBalancerWrapper // 负责均衡器封装对象
 	retryThrottler  atomic.Value
 
-	firstResolveEvent *grpcsync.Event
+	firstResolveEvent *grpcsync.Event // 第一次解析事件
 
 	channelzID int64 // channelz unique identification number
 	czData     *channelzData
@@ -562,6 +562,7 @@ func (cc *ClientConn) scWatcher() {
 func (cc *ClientConn) waitForResolvedAddrs(ctx context.Context) error {
 	// This is on the RPC path, so we use a fast path to avoid the
 	// more-expensive "select" below after the resolver has returned once.
+	// 等待第一次目标解析完成
 	if cc.firstResolveEvent.HasFired() {
 		return nil
 	}
@@ -599,7 +600,9 @@ func (cc *ClientConn) maybeApplyDefaultServiceConfig(addrs []resolver.Address) {
 
 // 解析器状态更新处理流程
 func (cc *ClientConn) updateResolverState(s resolver.State, err error) error {
+	// 通知第一次目标解析完成
 	defer cc.firstResolveEvent.Fire()
+
 	cc.mu.Lock()
 	// Check if the ClientConn is already closed. Some fields (e.g.
 	// balancerWrapper) are set to nil when closing the ClientConn, and could
@@ -732,14 +735,14 @@ func (cc *ClientConn) handleSubConnStateChange(sc balancer.SubConn, s connectivi
 	cc.mu.Unlock()
 }
 
-// newAddrConn creates an addrConn for addrs and adds it to cc.conns.
+// newAddrConn creates an addrConn for addrs and adds it to cc.conns. 创建网络连接
 //
 // Caller needs to make sure len(addrs) > 0.
 func (cc *ClientConn) newAddrConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (*addrConn, error) {
 	ac := &addrConn{
-		state:        connectivity.Idle,
+		state:        connectivity.Idle, // 空闲状态
 		cc:           cc,
-		addrs:        addrs,
+		addrs:        addrs, // 地址列表
 		scopts:       opts,
 		dopts:        cc.dopts,
 		czData:       new(channelzData),
@@ -748,10 +751,12 @@ func (cc *ClientConn) newAddrConn(addrs []resolver.Address, opts balancer.NewSub
 	ac.ctx, ac.cancel = context.WithCancel(cc.ctx)
 	// Track ac in cc. This needs to be done before any getTransport(...) is called.
 	cc.mu.Lock()
+	// 检查客户端连接是否已经关闭
 	if cc.conns == nil {
 		cc.mu.Unlock()
 		return nil, ErrClientConnClosing
 	}
+
 	if channelz.IsOn() {
 		ac.channelzID = channelz.RegisterSubChannel(ac, cc.channelzID, "")
 		channelz.AddTraceEvent(ac.channelzID, 0, &channelz.TraceEventDesc{
@@ -763,6 +768,7 @@ func (cc *ClientConn) newAddrConn(addrs []resolver.Address, opts balancer.NewSub
 			},
 		})
 	}
+
 	cc.conns[ac] = struct{}{}
 	cc.mu.Unlock()
 	return ac, nil
@@ -811,26 +817,33 @@ func (cc *ClientConn) incrCallsFailed() {
 	atomic.AddInt64(&cc.czData.callsFailed, 1)
 }
 
-// connect starts creating a transport.
+// connect starts creating a transport. 创建连接传输对象
 // It does nothing if the ac is not IDLE.
 // TODO(bar) Move this to the addrConn section.
 func (ac *addrConn) connect() error {
 	ac.mu.Lock()
+	// 客户端连接是否已经关闭
 	if ac.state == connectivity.Shutdown {
 		ac.mu.Unlock()
 		return errConnClosing
 	}
+
+	// 空闲状态的连接创建传输对象
 	if ac.state != connectivity.Idle {
 		ac.mu.Unlock()
 		return nil
 	}
+
+	// 更新连接状态：连接中
 	// Update connectivity state within the lock to prevent subsequent or
 	// concurrent calls from resetting the transport more than once.
 	ac.updateConnectivityState(connectivity.Connecting, nil)
 	ac.mu.Unlock()
 
 	// Start a goroutine connecting to the server asynchronously.
+	// 启动独立协程异步连接服务
 	go ac.resetTransport()
+
 	return nil
 }
 
@@ -1054,30 +1067,30 @@ func (cc *ClientConn) Close() error {
 	return nil
 }
 
-// addrConn is a network connection to a given address.
+// addrConn is a network connection to a given address. 基于给定地址的网络连接
 type addrConn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	cc     *ClientConn
-	dopts  dialOptions
-	acbw   balancer.SubConn
+	cc     *ClientConn      // 逻辑连接对象
+	dopts  dialOptions      // 连接选项
+	acbw   balancer.SubConn // 负载均衡器的子连接对象
 	scopts balancer.NewSubConnOptions
 
 	// transport is set when there's a viable transport (note: ac state may not be READY as LB channel
 	// health checking may require server to report healthy to set ac to READY), and is reset
 	// to nil when the current transport should no longer be used to create a stream (e.g. after GoAway
 	// is received, transport is closed, ac has been torn down).
-	transport transport.ClientTransport // The current transport.
+	transport transport.ClientTransport // 当前连接传输对象
 
 	mu      sync.Mutex
-	curAddr resolver.Address   // The current address.
-	addrs   []resolver.Address // All addresses that the resolver resolved to.
+	curAddr resolver.Address   // The current address. 当前连接传输对象的网络地址
+	addrs   []resolver.Address // All addresses that the resolver resolved to. 解析获取的地址列表
 
 	// Use updateConnectivityState for updating addrConn's connectivity state.
-	state connectivity.State
+	state connectivity.State // 连接状态
 
-	backoffIdx   int // Needs to be stateful for resetConnectBackoff.
+	backoffIdx   int // Needs to be stateful for resetConnectBackoff. // 退避重连
 	resetBackoff chan struct{}
 
 	channelzID int64 // channelz unique identification number.
@@ -1108,6 +1121,7 @@ func (ac *addrConn) adjustParams(r transport.GoAwayReason) {
 	}
 }
 
+// 创建连接传输对象
 func (ac *addrConn) resetTransport() {
 	for i := 0; ; i++ {
 		if i > 0 {
@@ -1140,10 +1154,12 @@ func (ac *addrConn) resetTransport() {
 		// https://github.com/grpc/grpc/blob/master/doc/connection-backoff.md#proposed-backoff-algorithm
 		connectDeadline := time.Now().Add(dialDuration)
 
+		// 更新连接状态：连接中
 		ac.updateConnectivityState(connectivity.Connecting, nil)
 		ac.transport = nil
 		ac.mu.Unlock()
 
+		// 尝试创建连接传输对象
 		newTr, addr, reconnect, err := ac.tryAllAddrs(addrs, connectDeadline)
 		if err != nil {
 			// After exhausting all addresses, the addrConn enters
@@ -1155,7 +1171,7 @@ func (ac *addrConn) resetTransport() {
 			}
 			ac.updateConnectivityState(connectivity.TransientFailure, err)
 
-			// Backoff.
+			// Backoff. 重试退避
 			b := ac.resetBackoff
 			ac.mu.Unlock()
 
@@ -1180,16 +1196,19 @@ func (ac *addrConn) resetTransport() {
 			newTr.Close()
 			return
 		}
+		// 更新当前连接地址、连接传输对象
 		ac.curAddr = addr
 		ac.transport = newTr
 		ac.backoffIdx = 0
 
 		hctx, hcancel := context.WithCancel(ac.ctx)
+		// 启动健康检查，默认关闭
 		ac.startHealthCheck(hctx)
 		ac.mu.Unlock()
 
 		// Block until the created transport is down. And when this happens,
 		// we restart from the top of the addr list.
+		// 阻塞直到当前传输对象被关闭
 		<-reconnect.Done()
 		hcancel()
 		// restart connecting - the top of the loop will set state to
@@ -1229,6 +1248,7 @@ func (ac *addrConn) tryAllAddrs(addrs []resolver.Address, connectDeadline time.T
 
 		channelz.Infof(ac.channelzID, "Subchannel picks a new address %q to connect", addr.Addr)
 
+		// 创建连接传输对象
 		newTr, reconnect, err := ac.createTransport(addr, copts, connectDeadline)
 		if err == nil {
 			return newTr, addr, reconnect, nil
@@ -1270,6 +1290,7 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 			}
 		})
 		ac.mu.Unlock()
+		// 通知重新连接
 		reconnect.Fire()
 	}
 
@@ -1286,6 +1307,7 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		})
 		ac.mu.Unlock()
 		close(onCloseCalled)
+		// 通知重新连接
 		reconnect.Fire()
 	}
 
@@ -1293,12 +1315,14 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		close(prefaceReceived)
 	}
 
+	// 连接超时设置
 	connectCtx, cancel := context.WithDeadline(ac.ctx, connectDeadline)
 	defer cancel()
 	if channelz.IsOn() {
 		copts.ChannelzParentID = ac.channelzID
 	}
 
+	// 初始化连接的读写流程
 	newTr, err := transport.NewClientTransport(connectCtx, ac.cc.ctx, addr, copts, onPrefaceReceipt, onGoAway, onClose)
 	if err != nil {
 		// newTr is either nil, or closed.
@@ -1313,6 +1337,7 @@ func (ac *addrConn) createTransport(addr resolver.Address, copts transport.Conne
 		channelz.Warningf(ac.channelzID, "grpc: addrConn.createTransport failed to connect to %v: didn't receive server preface in time. Reconnecting...", addr)
 		return nil, nil, errors.New("timed out waiting for server handshake")
 	case <-prefaceReceived:
+		channelz.Info(ac.channelzID, "transport received preface")
 		// We got the preface - huzzah! things are good.
 	case <-onCloseCalled:
 		// The transport has already closed - noop.
@@ -1338,6 +1363,7 @@ func (ac *addrConn) startHealthCheck(ctx context.Context) {
 	var healthcheckManagingState bool
 	defer func() {
 		if !healthcheckManagingState {
+			// 如果不通过健康检查管理连接状态，更新连接状态：已经就绪
 			ac.updateConnectivityState(connectivity.Ready, nil)
 		}
 	}()
@@ -1372,6 +1398,7 @@ func (ac *addrConn) startHealthCheck(ctx context.Context) {
 			return nil, status.Error(codes.Canceled, "the provided transport is no longer valid to use")
 		}
 		ac.mu.Unlock()
+		// 基于传输对象创建客户端流
 		return newNonRetryClientStream(ctx, &StreamDesc{ServerStreams: true}, method, currentTr, ac)
 	}
 	setConnectivityState := func(s connectivity.State, lastErr error) {

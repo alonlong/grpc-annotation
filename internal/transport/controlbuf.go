@@ -296,7 +296,7 @@ func newControlBuffer(done <-chan struct{}) *controlBuffer {
 }
 
 // throttle blocks if there are too many incomingSettings/cleanupStreams in the
-// controlbuf.
+// controlbuf. 如果存在太多的 请求设置帧/流清理帧，停止接收数据帧
 func (c *controlBuffer) throttle() {
 	ch, _ := c.trfChan.Load().(*chan struct{})
 	if ch != nil {

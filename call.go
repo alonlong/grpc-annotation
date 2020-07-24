@@ -62,13 +62,19 @@ func Invoke(ctx context.Context, method string, args, reply interface{}, cc *Cli
 
 var unaryStreamDesc = &StreamDesc{ServerStreams: false, ClientStreams: false}
 
+// 远程调用：方法、请求，响应，连接，调用选项
 func invoke(ctx context.Context, method string, req, reply interface{}, cc *ClientConn, opts ...CallOption) error {
+	// 每个请求：基于客户端连接创建新流
 	cs, err := newClientStream(ctx, unaryStreamDesc, cc, method, opts...)
 	if err != nil {
 		return err
 	}
+
+	// 发送消息
 	if err := cs.SendMsg(req); err != nil {
 		return err
 	}
+
+	// 接收消息
 	return cs.RecvMsg(reply)
 }
