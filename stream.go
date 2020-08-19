@@ -170,6 +170,8 @@ func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 	if err := cc.waitForResolvedAddrs(ctx); err != nil {
 		return nil, err
 	}
+
+	// method config is empty structure by default
 	mc := cc.GetMethodConfig(method)
 	if mc.WaitForReady != nil {
 		c.failFast = !*mc.WaitForReady
@@ -197,6 +199,8 @@ func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 			return nil, toRPCErr(err)
 		}
 	}
+
+	// 最大发送或接收的消息大小
 	c.maxSendMessageSize = getMaxSize(mc.MaxReqSize, c.maxSendMessageSize, defaultClientMaxSendMessageSize)
 	c.maxReceiveMessageSize = getMaxSize(mc.MaxRespSize, c.maxReceiveMessageSize, defaultClientMaxReceiveMessageSize)
 	if err := setCallInfoCodec(c); err != nil {

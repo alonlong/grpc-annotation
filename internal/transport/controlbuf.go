@@ -487,10 +487,10 @@ const minBatchSize = 1000
 // 1. Updating loopy's internal state, or/and
 // 2. Writing out HTTP2 frames on the wire.
 //
-// Loopy keeps all active streams with data to send in a linked-list.
+// Loopy keeps all active streams with data to send in a linked-list. 通过单链表维护所有活跃的流
 // All streams in the activeStreams linked-list must have both:
-// 1. Data to send, and
-// 2. Stream level flow control quota available.
+// 1. Data to send, and 待发送数据
+// 2. Stream level flow control quota available. 可用的流级别的流控配额
 //
 // In each iteration of run loop, other than processing the incoming control
 // frame, loopy calls processData, which processes one node from the activeStreams linked-list.
@@ -498,6 +498,9 @@ const minBatchSize = 1000
 // When there's no more control frames to read from controlBuf, loopy flushes the write buffer.
 // As an optimization, to increase the batch size for each flush, loopy yields the processor, once
 // if the batch size is too low to give stream goroutines a chance to fill it up.
+// 每次轮询，循环体首先调用 ProcessData 处理单链表的一个节点，数据写入底层的写缓冲
+// 如果没有控制帧需要处理，循环体刷新写缓冲。
+// 作为一个优化，为了增加每次刷新的数据大小，一旦数据大小太低，循环体让出处理器
 func (l *loopyWriter) run() (err error) {
 	defer func() {
 		if err == ErrConnClosing {
@@ -517,9 +520,11 @@ func (l *loopyWriter) run() (err error) {
 		if err = l.handle(it); err != nil {
 			return err
 		}
+		// 处理单链表的一个节点，数据写入底层的写缓冲
 		if _, err = l.processData(); err != nil {
 			return err
 		}
+
 		gosched := true
 	hasdata:
 		for {
@@ -843,8 +848,10 @@ func (l *loopyWriter) processData() (bool, error) {
 		}
 		str.itl.dequeue() // remove the empty data item from stream
 		if str.itl.isEmpty() {
+			// 如果待发送数据列表为空，流状态设置为空
 			str.state = empty
 		} else if trailer, ok := str.itl.peek().(*headerFrame); ok { // the next item is trailers.
+			// 下一个数据帧是头部帧
 			if err := l.writeHeader(trailer.streamID, trailer.endStream, trailer.hf, trailer.onWrite); err != nil {
 				return false, err
 			}
@@ -852,6 +859,7 @@ func (l *loopyWriter) processData() (bool, error) {
 				return false, nil
 			}
 		} else {
+			// 如果待发送数据帧列表不为空，当前流插入队列尾部
 			l.activeStreams.enqueue(str)
 		}
 		return false, nil
@@ -862,6 +870,7 @@ func (l *loopyWriter) processData() (bool, error) {
 	// Figure out the maximum size we can send
 	maxSize := http2MaxFrameLen
 	if strQuota := int(l.oiws) - str.bytesOutStanding; strQuota <= 0 { // stream-level flow control.
+		// 流级别配额不够，需要等待可发送的配额
 		str.state = waitingOnStreamQuota
 		return false, nil
 	} else if maxSize > strQuota {
