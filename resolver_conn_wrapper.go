@@ -35,11 +35,11 @@ import (
 // ccResolverWrapper is a wrapper on top of cc for resolvers.
 // It implements resolver.ClientConn interface.
 type ccResolverWrapper struct {
-	cc         *ClientConn
+	cc         *ClientConn // 逻辑连接
 	resolverMu sync.Mutex
-	resolver   resolver.Resolver
+	resolver   resolver.Resolver // 解析器
 	done       *grpcsync.Event
-	curState   resolver.State // 当前解析器的状态(当前地址列表)
+	curState   resolver.State // 当前解析器状态，包含当前地址列表
 
 	pollingMu sync.Mutex
 	polling   chan struct{}

@@ -942,6 +942,8 @@ func (cc *ClientConn) applyServiceConfigAndBalancer(sc *ServiceConfig, addrs []r
 	}
 	cc.sc = sc
 
+	channelz.Infof(cc.channelzID, "service config: %+v", *sc)
+
 	if cc.sc.retryThrottling != nil {
 		newThrottler := &retryThrottler{
 			tokens: cc.sc.retryThrottling.MaxTokens,
@@ -984,6 +986,7 @@ func (cc *ClientConn) applyServiceConfigAndBalancer(sc *ServiceConfig, addrs []r
 		// Balancer dial option was set, and this is the first time handling
 		// resolved addresses. Build a balancer with dopts.balancerBuilder.
 		cc.curBalancerName = cc.dopts.balancerBuilder.Name()
+		channelz.Infof(cc.channelzID, "balancer name: %+v", cc.curBalancerName)
 		cc.balancerWrapper = newCCBalancerWrapper(cc, cc.dopts.balancerBuilder, cc.balancerBuildOpts)
 	}
 }
